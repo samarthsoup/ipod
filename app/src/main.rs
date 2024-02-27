@@ -1,6 +1,9 @@
 use std::{collections::HashMap, error::Error, fs::File, io::Read, process};
 use dotenv::dotenv;
 use std::env;
+use rodio::{Decoder, OutputStream, Sink, OutputStreamHandle};
+use std::{fs::File, io::{self, BufReader, Write}, thread, sync::mpsc};
+use std::time::Duration;
 
 fn get_base_directory() -> Result<String, Box<dyn Error>> {
     dotenv().ok();
@@ -51,6 +54,39 @@ fn code_to_song_title(code: String) -> Result<String, Box<dyn Error>> {
         } 
             
     }
+}
+
+fn play_track(sink: &mut Option<Sink>, track_path: String, stream_handle: &OutputStreamHandle) -> Result<(), Box<dyn std::error::Error>> {
+    
+    let file = match File::open(track_path){
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("io error: {}", e);
+            print!(": ");
+            io::stdout().flush().unwrap();
+            return Err(Box::new(e));
+        }
+    };
+    let source = match Decoder::new(BufReader::new(file)){
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("decoder error: {}", e);
+            print!(": ");
+            io::stdout().flush().unwrap();
+            return Err(Box::new(e)); 
+        }
+    };
+
+    if let Some(ref mut s) = sink {
+        s.stop();
+        s.append(source);
+    } else {
+        let new_sink = Sink::try_new(&stream_handle)?;
+        new_sink.append(source);
+        *sink = Some(new_sink);
+    }
+    
+    Ok(())
 }
 
 fn main() {

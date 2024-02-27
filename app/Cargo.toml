@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 dot-env = "0.15.0"
+rodio = "0.13.0"
