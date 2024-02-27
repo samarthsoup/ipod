@@ -1,6 +1,8 @@
 import os
 import sys
 
+env_file_path = r'C:\Users\thesa\codes\ipod\app\.env'
+
 def create_structure(base_directory):
     subdirectories = ["playlists", "hash-table"]
 
@@ -16,7 +18,18 @@ def create_structure(base_directory):
         with open(file_path, 'w') as file:
             file.write("")
 
+env_vars = {}
+
 if len(sys.argv) > 1:
     create_structure(sys.argv[1])
-    with open(r'C:\Users\thesa\codes\ipod\app\.env', 'w') as env_file:
-        env_file.write(f"BASE_DIR={sys.argv[1]}\n")
+    with open(env_file_path, 'r') as file:
+        for line in file:
+            if '=' in line:
+                key, value = line.strip().split('=', 1)
+                env_vars[key] = value
+    
+    env_vars['BASE_DIR'] = sys.argv[1]
+
+    with open(env_file_path, 'w') as file:
+        for key, value in env_vars.items():
+            file.write(f"{key}={value}\n")
