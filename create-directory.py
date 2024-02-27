@@ -18,3 +18,5 @@ def create_structure(base_directory):
 
 if len(sys.argv) > 1:
     create_structure(sys.argv[1])
+    with open(r'C:\Users\thesa\codes\ipod\app\.env', 'w') as env_file:
+        env_file.write(f"BASE_DIR={sys.argv[1]}\n")
