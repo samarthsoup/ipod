@@ -26,13 +26,22 @@ def generate_unique_code():
         if code not in codes_set:
             codes_set.add(code)
             return code
+        
+hash_table_path = os.path.join(base_directory, 'hash-table', 'hash-table.txt')
+if os.path.exists(hash_table_path):
+    with open(hash_table_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split(': ')
+            mp3_files[key] = value
+            codes_set.add(value)
 
 for root, dirs, files in os.walk(songs_directory):
     for file in files:
         if file.endswith('.mp3'):
-            unique_code = generate_unique_code()
             relative_path = os.path.relpath(os.path.join(root, file), start=songs_directory)
-            mp3_files[relative_path] = unique_code
+            if relative_path not in mp3_files:
+                unique_code = generate_unique_code()
+                mp3_files[relative_path] = unique_code
 
 with open(base_directory + r'\hash-table\hash-table.txt', 'w') as file:
     for key, value in mp3_files.items():
