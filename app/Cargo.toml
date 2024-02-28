@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dot-env = "0.15.0"
+dotenv = "0.15.0"
 rodio = "0.13.0"

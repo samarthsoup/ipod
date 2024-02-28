@@ -1,9 +1,8 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, process};
-use dotenv::dotenv;
-use std::env;
+use std::{error::Error, fs::File};
 use rodio::{Decoder, OutputStream, Sink, OutputStreamHandle};
-use std::{fs::File, io::{self, BufReader, Write}, thread, sync::mpsc};
+use std::{io::{self, BufReader, Write}, thread, sync::mpsc};
 use std::time::Duration;
+use std::io::BufRead;
 
 enum InterruptMessage {
     Play(String),
@@ -16,15 +15,37 @@ enum InterruptMessage {
 }
 
 fn get_base_directory() -> Result<String, Box<dyn Error>> {
-    dotenv().ok();
+    let env_name = "env.txt";
+    let env = File::open(env_name)?;
 
-    env::var("BASE_DIR")
+    let reader = BufReader::new(env);
+
+    for line in reader.lines() {
+        if let Some((key,value)) = line?.split_once('='){
+            if key.trim() == "BASE_DIR" {
+                return Ok(value.to_string());
+            }
+        }      
+    };
+
+    return Err("value not found".into());
 }
 
 fn get_songs_directory() -> Result<String, Box<dyn Error>> {
-    dotenv().ok();
+    let env_name = "env.txt";
+    let env = File::open(env_name)?;
 
-    env::var("SONGS_DIR")
+    let reader = BufReader::new(env);
+
+    for line in reader.lines() {
+        if let Some((key,value)) = line?.split_once('='){
+            if key.trim() == "SONGS_DIR" {
+                return Ok(value.to_string());
+            } 
+        }      
+    };
+
+    return Err("value not found".into());
 }
 
 fn load_playlist(playlist_name: String, queue: &mut Vec<String>) -> Result<(), Box<dyn Error>> {
@@ -32,12 +53,12 @@ fn load_playlist(playlist_name: String, queue: &mut Vec<String>) -> Result<(), B
 
     let playlist_file_name = base_directory + r"\playlists\" + playlist_name.as_str(); 
 
-    let mut playlist_file = File::open(playlist_file_name)?;
+    let playlist_file = File::open(playlist_file_name)?;
 
     let reader = BufReader::new(playlist_file);
 
     for line in reader.lines() {
-        queue.push(line)?;
+        queue.push(line?);
     }
 
     Ok(())
@@ -48,26 +69,25 @@ fn code_to_song_title(code: String) -> Result<String, Box<dyn Error>> {
 
     let hash_table_name = base_directory + r"\hash-table\hash-table.txt"; 
 
-    let mut hash_table = File::open(hash_table_name)?;
-
-    codes = HashMap::new();
+    let hash_table = File::open(hash_table_name)?;
 
     let reader = BufReader::new(hash_table);
 
     for line in reader.lines() {
-        if let Some((key,value)) = line.split_once(":"){
-            if value == code {
-                return key;
-            } else {
-                return Box::new("delimiter not found");
+        if let Some((key,value)) = line?.split_once(":"){
+            if value.trim() == code {
+                return Ok(key.to_string());
             }
-        } 
-            
-    }
+        }      
+    };
+
+    return Err("value not found".into());
 }
 
-fn play_track(sink: &mut Option<Sink>, track_path: String, stream_handle: &OutputStreamHandle) -> Result<(), Box<dyn std::error::Error>> {
-    
+fn play_track(sink: &mut Option<Sink>, track_name: String, stream_handle: &OutputStreamHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let songs_directory = get_songs_directory()?;
+
+    let track_path = songs_directory + track_name.as_str();
     let file = match File::open(track_path){
         Ok(f) => f,
         Err(e) => {
@@ -108,25 +128,27 @@ fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std::err
 
     for msg in rx {
         match msg {
-            InterruptMessage::Play(file_path) => {
+            InterruptMessage::Play(song_code) => {
                 if let Some(ref s) = sink {
                     s.stop();
                 }
 
                 queue.clear();
                 current_track = 0;
-                queue.push(file_path);
+                queue.push(song_code);
+
+                let file_path = code_to_song_title(queue[current_track].clone())?;
 
                 if let Some(ref s) = sink {
                     s.stop();
                 }
-                match play_track(&mut sink, &queue, current_track, &stream_handle){
+                match play_track(&mut sink, file_path, &stream_handle){
                     Ok(_) => {},
                     Err(_) => continue
                 };
             },
-            InterruptMessage::Queue(file_path) => {
-                queue.push(file_path);
+            InterruptMessage::Queue(song_code) => {
+                queue.push(song_code);
             },
             InterruptMessage::Stop => {
                 if let Some(ref s) = sink {
@@ -147,10 +169,12 @@ fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std::err
             InterruptMessage::Next => {
                 if !queue.is_empty() {
                     current_track = (current_track + 1) % queue.len();
+                    let file_path = code_to_song_title(queue[current_track].clone())?;
+
                     if let Some(ref s) = sink {
                         s.stop();
                     }
-                    match play_track(&mut sink, &queue, current_track, &stream_handle){
+                    match play_track(&mut sink, file_path, &stream_handle){
                         Ok(_) => {},
                         Err(_) => continue
                     };
@@ -163,10 +187,13 @@ fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std::err
                     } else {
                         current_track -= 1;
                     }
+
+                    let file_path = code_to_song_title(queue[current_track].clone())?;
+
                     if let Some(ref s) = sink {
                         s.stop();
                     }
-                    match play_track(&mut sink, &queue, current_track, &stream_handle){
+                    match play_track(&mut sink, file_path, &stream_handle){
                         Ok(_) => {},
                         Err(_) => continue
                     };
@@ -176,7 +203,9 @@ fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std::err
         if let Some(ref s) = &sink {
             if s.empty() && !queue.is_empty() {
                 current_track = (current_track + 1) % queue.len();
-                match play_track(&mut sink, &queue, current_track, &stream_handle){
+                let file_path = code_to_song_title(queue[current_track].clone())?;
+
+                match play_track(&mut sink, file_path, &stream_handle){
                     Ok(_) => {},
                     Err(_) => continue
                 };
@@ -215,13 +244,12 @@ fn main() {
 
         match input {
             command if command.starts_with("p ") => {
-                let
-                let file_path = format!(r"C:\Users\thesa\walkman\src\{}.mp3", command[2..].to_string());
-                audiotx.send(InterruptMessage::Play(file_path)).unwrap();
+                let song_code = command[2..].to_string();
+                audiotx.send(InterruptMessage::Play(song_code)).unwrap();
             },
             command if command.starts_with("q ") => {
-                let file_path = format!(r"C:\Users\thesa\walkman\src\{}.mp3", command[2..].to_string());
-                audiotx.send(InterruptMessage::Queue(file_path)).unwrap();
+                let song_code = command[2..].to_string();
+                audiotx.send(InterruptMessage::Queue(song_code)).unwrap();
             },
             "pz" => {
                 audiotx.send(InterruptMessage::Pause).unwrap();
