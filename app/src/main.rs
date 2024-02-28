@@ -12,6 +12,7 @@ enum InterruptMessage {
     Resume,
     Next,
     Previous,
+    LoadPlaylist(String)
 }
 
 fn get_base_directory() -> Result<String, Box<dyn Error>> {
@@ -198,6 +199,9 @@ fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std::err
                         Err(_) => continue
                     };
                 }
+            },
+            InterruptMessage::LoadPlaylist(playlist_name) => {
+                load_playlist(playlist_name, &mut queue)?;
             }
         }
         if let Some(ref s) = &sink {
@@ -265,6 +269,10 @@ fn main() {
             },
             "pr" => {
                 audiotx.send(InterruptMessage::Previous).unwrap();
+            },
+            command if command.starts_with("lp") => {
+                let playlist_name = command[3..].to_string();
+                audiotx.send(InterruptMessage::LoadPlaylist(playlist_name)).unwrap();
             }
             "h" => {
                 println!("walkman docs\nplay: p {{songname}}\nqueue: q {{songname}}\npz: pause\nr: resume\nstop: s\nexit: e\ndocs: h");
