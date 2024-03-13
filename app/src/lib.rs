@@ -6,7 +6,7 @@ use std::io::BufRead;
 use std::path::Path;
 
 pub enum InterruptMessage {
-    Play(String),
+    Play,
     Queue(String),
     Stop,
     Pause,
@@ -179,17 +179,23 @@ fn code_to_song_title(code: String) -> Result<String, Box<dyn Error>> {
 fn play_track(sink: &mut Option<Sink>, track_name: String, stream_handle: &OutputStreamHandle) -> Result<(), Box<dyn std::error::Error>> {
     let songs_directory = get_songs_directory()?;
     let track_path = songs_directory + track_name.as_str();
+    println!("track path: {track_path}");
     let file = File::open(track_path)?;
 
     let source = Decoder::new(BufReader::new(file))?;
 
     if let Some(ref mut s) = sink {
-        s.stop();
-        s.append(source);
-    } else {
-        let new_sink = Sink::try_new(&stream_handle)?;
-        new_sink.append(source);
-        *sink = Some(new_sink);
+        s.stop(); // Stop current playing track
+        //s.detach(); // Detach the sink from the stream (optional, consider if necessary)
+    }
+
+    // Create a new sink for the new track
+    let new_sink = Sink::try_new(stream_handle)?;
+    new_sink.append(source);
+    *sink = Some(new_sink);
+
+    if let Some(ref mut s) = sink {
+        s.play(); // Explicitly play the new track
     }
     
     Ok(())
@@ -204,20 +210,10 @@ pub fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std:
 
     for msg in rx {
         match msg {
-            InterruptMessage::Play(song_code) => {
-                if let Some(ref s) = sink {
-                    s.stop();
-                }
+            InterruptMessage::Play => {
+                let song_code = (&queue[current_track]).to_string();
+                let file_path = code_to_song_title(song_code).unwrap();
 
-                queue.clear();
-                current_track = 0;
-                queue.push(song_code);
-
-                let file_path = code_to_song_title(queue[current_track].clone())?;
-
-                if let Some(ref s) = sink {
-                    s.stop();
-                }
                 match play_track(&mut sink, file_path, &stream_handle){
                     Ok(_) => {},
                     Err(_) => continue
@@ -245,15 +241,14 @@ pub fn play_mp3(rx: mpsc::Receiver<InterruptMessage>) -> Result<(), Box<dyn std:
             InterruptMessage::Next => {
                 if !queue.is_empty() {
                     current_track = (current_track + 1) % queue.len();
-                    println!("{current_track}");
-                    let file_path = code_to_song_title(queue[current_track].clone())?;
-
-                    if let Some(ref s) = sink {
-                        s.stop();
-                    }
+                    let file_path = code_to_song_title((&queue[current_track]).to_string())?;
+                    
                     match play_track(&mut sink, file_path, &stream_handle){
                         Ok(_) => {},
-                        Err(_) => continue
+                        Err(e) => {
+                            println!("{e}");
+                            continue;
+                        }
                     };
                 }
             },
@@ -342,9 +337,8 @@ pub fn execute(audiotx: Sender<InterruptMessage>) {
         let input = input.trim();
 
         match input {
-            command if command.starts_with("p ") => {
-                let song_code = command[2..].to_string();
-                audiotx.send(InterruptMessage::Play(song_code)).unwrap();
+            "p" => {
+                audiotx.send(InterruptMessage::Play).unwrap();
             },
             command if command.starts_with("q ") => {
                 let song_code = command[2..].to_string();
