@@ -179,23 +179,20 @@ fn code_to_song_title(code: String) -> Result<String, Box<dyn Error>> {
 fn play_track(sink: &mut Option<Sink>, track_name: String, stream_handle: &OutputStreamHandle) -> Result<(), Box<dyn std::error::Error>> {
     let songs_directory = get_songs_directory()?;
     let track_path = songs_directory + track_name.as_str();
-    println!("track path: {track_path}");
     let file = File::open(track_path)?;
 
     let source = Decoder::new(BufReader::new(file))?;
 
     if let Some(ref mut s) = sink {
-        s.stop(); // Stop current playing track
-        //s.detach(); // Detach the sink from the stream (optional, consider if necessary)
+        s.stop(); 
     }
 
-    // Create a new sink for the new track
     let new_sink = Sink::try_new(stream_handle)?;
     new_sink.append(source);
     *sink = Some(new_sink);
 
     if let Some(ref mut s) = sink {
-        s.play(); // Explicitly play the new track
+        s.play();
     }
     
     Ok(())
